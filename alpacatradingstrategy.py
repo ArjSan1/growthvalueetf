@@ -151,50 +151,83 @@ def get_historical_bars(api, ticker, lookback_days):
 
 # ... (Insert the functions calculate_rsmk, calculate_vfi, and determine_signal here)
 def calculate_rsmk(etf_bars, index_bars, rs_bars, smoothing_constant, rs_ma_bars):
-    if len(etf_bars) < rs_bars + 1 or len(index_bars) < rs_bars + 1:
-        print("Not enough data to calculate RSMK, returning default values")
-        # Not enough data to calculate RSMK, returning default values
-        return 0, 0
-    else:
-        print("Calculating RSMK")
+    # Ensure enough data is available
+    if len(etf_bars) < rs_bars or len(index_bars) < rs_bars:
+        return None, None
 
+    # Convert bars to numpy arrays for calculations
     etf_close = np.array([bar.c for bar in etf_bars])
     index_close = np.array([bar.c for bar in index_bars])
-    r12 = etf_close[-1] / index_close[-1]
-    rs1 = np.log(r12) - np.log(etf_close[-rs_bars-1] / index_close[-rs_bars-1])
+
+    # Calculate RSMK
+    r12 = etf_close[-rs_bars:] / index_close[-rs_bars:]
+    rs1 = np.log(r12[-1]) - np.log(r12[0])
     rs = rs1 * 100
-    mars = np.mean([np.log(etf_close[i] / etf_close[i - rs_ma_bars]) * 100 for i in range(-rs_ma_bars, 0)])
-    print(rs, mars)
-    return rs, mars
+    rs_smoothed = np.mean(rs)  # Example of smoothing, can be adjusted
+
+    # Calculate Moving Average of RSMK
+    if len(etf_bars) < rs_ma_bars:
+        mars = rs_smoothed  # If not enough data for moving average
+    else:
+        mars = np.mean([np.log(etf_close[i] / etf_close[i - rs_ma_bars]) * 100 for i in range(-rs_ma_bars, 0)])
+
+    return rs_smoothed, mars
 
 def calculate_vfi(bars, period, smooth, coef, vol_coef):
-    if len(bars) < 30:
-        print("Not enough data to calculate VFI, returning default value")
-        # Not enough data to calculate VFI, returning default value
-        return 0
-    else:
-        print("Calculating VFI")
-        
-    
+    if len(bars) < max(30, period):
+        return None  # Not enough data
 
+    # Extract required data from bars
     closes = np.array([bar.c for bar in bars])
     highs = np.array([bar.h for bar in bars])
     lows = np.array([bar.l for bar in bars])
     volumes = np.array([bar.v for bar in bars])
-    
-    typical_price = (highs[-1] + lows[-1] + closes[-1]) / 3
-    inter = np.log(typical_price) - np.log(closes[-2])
-    vinter = np.std(np.diff(np.log(closes[-30:])))
-    cutoff = coef * vinter * closes[-1]
+
+    # Typical Price and Price Change
+    typical_prices = (highs + lows + closes) / 3
+    price_changes = typical_prices[1:] - typical_prices[:-1]
+
+    # Standard Deviation of Price Changes
+    vinter = np.std(price_changes[-30:])
+
+    # Cut-off Calculation
+    cutoff = coef * vinter * closes
+
+    # Volume Average and Maximum Volume
     vave = np.mean(volumes[-period:])
     vmax = vave * vol_coef
-    vc = min(volumes[-1], vmax)
-    mf = typical_price - closes[-2]
-    vcp = vc if mf > cutoff else (-vc if mf < -cutoff else 0)
-    vfi = vcp / vave  # Simplified for the latest value only
-    print(vfi)
+
+    # Volume Cut-off Point
+    vc = np.minimum(volumes[-period:], vmax)
+
+    # Volume Force
+    mf = typical_prices - np.roll(typical_prices, 1)
+    vcp = np.where(mf > cutoff[-period:], vc, np.where(mf < -cutoff[-period:], -vc, 0))
+
+    # VFI Calculation
+    vfi = np.sum(vcp) / vave
+
     return vfi
 
+def determine_signal(api, symbol, index_symbol, rs_bars, smoothing_constant, rs_ma_bars, vfi_period, vfi_smooth, vfi_coef, vfi_vol_coef, vfi_crit):
+    # Fetch historical data for ETF and Index
+    etf_bars = get_historical_bars(api, symbol, rs_ma_bars + rs_bars)
+    index_bars = get_historical_bars(api, index_symbol, rs_ma_bars + rs_bars)
+
+    if not etf_bars or not index_bars:
+        return 'hold'  # Not enough data
+
+    # Calculate RSMK and VFI
+    rsmk, mars = calculate_rsmk(etf_bars, index_bars, rs_bars, smoothing_constant, rs_ma_bars)
+    vfi = calculate_vfi(etf_bars, vfi_period, vfi_smooth, vfi_coef, vfi_vol_coef)
+
+    # Decision Logic
+    if rsmk > mars and vfi > vfi_crit:
+        return 'buy'
+    elif rsmk < mars or vfi < vfi_crit:
+        return 'sell'
+    else:
+        return 'hold'
 
 # Define your trading logic here
 # Define your trading logic
@@ -264,6 +297,169 @@ def trade_logic(api):
                 time_in_force='gtc'
             )
             print(f"Submitted order to sell {position_qty} of {symbol} at {current_price}")
+        else:
+            print(f"Signal is {signal}, nothing to do for {symbol}")
 
 # Run the trading logic
 trade_logic(api)
+
+
+# import alpaca_trade_api as tradeapi
+# import os
+# from dotenv import load_dotenv
+# import numpy as np
+# import pandas as pd
+# import datetime as dt
+# import pytz
+
+# # Load environment variables
+# load_dotenv()
+# APCA_API_KEY_ID = os.getenv('APCA_API_KEY_ID')
+# APCA_API_SECRET_KEY = os.getenv('APCA_API_SECRET_KEY')
+# APCA_API_BASE_URL = os.getenv('APCA_API_BASE_URL') or 'https://paper-api.alpaca.markets'
+
+# # Initialize Alpaca API
+# api = tradeapi.REST(APCA_API_KEY_ID, APCA_API_SECRET_KEY, base_url=APCA_API_BASE_URL)
+
+# # Backtesting parameters
+# rs_bars = 15
+# smoothing_constant = 3
+# rs_ma_bars = 20
+# vfi_period = 130
+# vfi_smooth = 2
+# vfi_crit = 0
+# max_loss_perc = 7
+# vfi_coef = 0.2
+# vfi_vol_coef = 2.5
+# lookback_window = 130
+
+# # Signal processing functions
+
+
+# def calculate_rsmk(etf_bars, index_bars, rs_bars, smoothing_constant, rs_ma_bars):
+#     # Ensure enough data is available
+#     if len(etf_bars) < rs_bars or len(index_bars) < rs_bars:
+#         return None, None
+
+#     # Convert bars to numpy arrays for calculations
+#     etf_close = np.array([bar.c for bar in etf_bars])
+#     index_close = np.array([bar.c for bar in index_bars])
+
+#     # Calculate RSMK
+#     r12 = etf_close[-rs_bars:] / index_close[-rs_bars:]
+#     rs1 = np.log(r12[-1]) - np.log(r12[0])
+#     rs = rs1 * 100
+#     rs_smoothed = np.mean(rs)  # Example of smoothing, can be adjusted
+
+#     # Calculate Moving Average of RSMK
+#     if len(etf_bars) < rs_ma_bars:
+#         mars = rs_smoothed  # If not enough data for moving average
+#     else:
+#         mars = np.mean([np.log(etf_close[i] / etf_close[i - rs_ma_bars]) * 100 for i in range(-rs_ma_bars, 0)])
+
+#     return rs_smoothed, mars
+# def calculate_vfi(bars, period, smooth, coef, vol_coef):
+#     if len(bars) < max(30, period):
+#         return None  # Not enough data
+
+#     # Extract required data from bars
+#     closes = np.array([bar.c for bar in bars])
+#     highs = np.array([bar.h for bar in bars])
+#     lows = np.array([bar.l for bar in bars])
+#     volumes = np.array([bar.v for bar in bars])
+
+#     # Typical Price and Price Change
+#     typical_prices = (highs + lows + closes) / 3
+#     price_changes = typical_prices[1:] - typical_prices[:-1]
+
+#     # Standard Deviation of Price Changes
+#     vinter = np.std(price_changes[-30:])
+
+#     # Cut-off Calculation
+#     cutoff = coef * vinter * closes
+
+#     # Volume Average and Maximum Volume
+#     vave = np.mean(volumes[-period:])
+#     vmax = vave * vol_coef
+
+#     # Volume Cut-off Point
+#     vc = np.minimum(volumes[-period:], vmax)
+
+#     # Volume Force
+#     mf = typical_prices - np.roll(typical_prices, 1)
+#     vcp = np.where(mf > cutoff[-period:], vc, np.where(mf < -cutoff[-period:], -vc, 0))
+
+#     # VFI Calculation
+#     vfi = np.sum(vcp) / vave
+
+#     return vfi
+# def determine_signal(api, symbol, index_symbol, rs_bars, smoothing_constant, rs_ma_bars, vfi_period, vfi_smooth, vfi_coef, vfi_vol_coef, vfi_crit):
+#     # Fetch historical data for ETF and Index
+#     etf_bars = get_historical_bars(api, symbol, rs_ma_bars + rs_bars)
+#     index_bars = get_historical_bars(api, index_symbol, rs_ma_bars + rs_bars)
+
+#     if not etf_bars or not index_bars:
+#         return 'hold'  # Not enough data
+
+#     # Calculate RSMK and VFI
+#     rsmk, mars = calculate_rsmk(etf_bars, index_bars, rs_bars, smoothing_constant, rs_ma_bars)
+#     vfi = calculate_vfi(etf_bars, vfi_period, vfi_smooth, vfi_coef, vfi_vol_coef)
+
+#     # Decision Logic
+#     if rsmk > mars and vfi > vfi_crit:
+#         return 'buy'
+#     elif rsmk < mars or vfi < vfi_crit:
+#         return 'sell'
+#     else:
+#         return 'hold'
+# def is_bear_market(index_bars, lookback_period=30, threshold=0.90):
+#     """
+#     Determine if the market is in a bearish trend based on the index's performance.
+
+#     :param index_bars: Historical bars for the index.
+#     :param lookback_period: The number of days to consider for the moving average.
+#     :param threshold: The percentage of the moving average that the current price must be below to indicate a bear market.
+#     :return: True if bear market conditions are met, False otherwise.
+#     """
+#     if len(index_bars) < lookback_period:
+#         return False  # Not enough data
+
+#     moving_average = np.mean([bar.c for bar in index_bars[-lookback_period:]])
+#     current_price = index_bars[-1].c
+
+#     return current_price < moving_average * threshold
+
+# # Fetch historical data
+# def get_historical_bars(api, ticker, lookback_days):
+#     timeNow = dt.datetime.now(pytz.timezone('US/Eastern'))
+#     past_date = timeNow - dt.timedelta(days=lookback_days)
+#     bars = api.get_bars(ticker, tradeapi.TimeFrame.Day, start=past_date.isoformat(), end=None, limit=lookback_days)
+#     return bars
+
+# # Trading logic
+# def trade_logic(api):
+#     account = api.get_account()
+#     cash_available = float(account.cash)
+#     symbols = ['VUG', 'VTV']
+#     index_symbol = 'SPY'
+#     vug_bars = get_historical_bars(api, 'VUG', lookback_window)
+#     vtv_bars = get_historical_bars(api, 'VTV', lookback_window)
+#     spy_bars = get_historical_bars(api, 'SPY', lookback_window)
+
+#     # Calculate signals and trade
+#     for symbol, etf_bars in zip(symbols, [vug_bars, vtv_bars]):
+#         rsmk, mars = calculate_rsmk(etf_bars, spy_bars, rs_bars, smoothing_constant, rs_ma_bars)
+#         vfi = calculate_vfi(etf_bars, vfi_period, vfi_smooth, vfi_coef, vfi_vol_coef)
+#         signal = determine_signal(rsmk, mars, vfi, vfi_crit)
+        
+#         # Implement bear market filter, stop loss, and trading logic
+#         # ... [Bear market filter and stop loss logic]
+
+#         # Execute trades
+#         # ... [Trade execution logic]
+
+# # Schedule to run trade_logic once per day
+# # ... [Scheduling logic using APScheduler or similar]
+
+# # Run the trading logic
+# trade_logic(api)
