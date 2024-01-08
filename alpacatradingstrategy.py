@@ -136,30 +136,47 @@ vfi_crit = 0
 maxlossperc = 7 
 vfi_coef = 0.2
 vfi_vol_coef = 2.5
-lookback_window = 30
+lookback_window = 130
 # Define your signal processing functions here (calculate_rsmk, calculate_vfi, determine_signal)
 
-def get_last30Days_bars(api, ticker):
-    timeNow = dt.datetime.now(pytz.timezone('US/Central'))
-    twoDaysAgo = timeNow - dt.timedelta(days=lookback_window)
+def get_historical_bars(api, ticker, lookback_days):
+    timeNow = dt.datetime.now(pytz.timezone('US/Eastern'))
+    past_date = timeNow - dt.timedelta(days=lookback_days)
 
     bars = api.get_bars(ticker, tradeapi.TimeFrame.Day,
-                        start=twoDaysAgo.isoformat(),
+                        start=past_date.isoformat(),
                         end=None,
-                        limit=2)
+                        limit=lookback_days)
     return bars
 
 # ... (Insert the functions calculate_rsmk, calculate_vfi, and determine_signal here)
 def calculate_rsmk(etf_bars, index_bars, rs_bars, smoothing_constant, rs_ma_bars):
+    if len(etf_bars) < rs_bars + 1 or len(index_bars) < rs_bars + 1:
+        print("Not enough data to calculate RSMK, returning default values")
+        # Not enough data to calculate RSMK, returning default values
+        return 0, 0
+    else:
+        print("Calculating RSMK")
+
     etf_close = np.array([bar.c for bar in etf_bars])
     index_close = np.array([bar.c for bar in index_bars])
     r12 = etf_close[-1] / index_close[-1]
     rs1 = np.log(r12) - np.log(etf_close[-rs_bars-1] / index_close[-rs_bars-1])
     rs = rs1 * 100
     mars = np.mean([np.log(etf_close[i] / etf_close[i - rs_ma_bars]) * 100 for i in range(-rs_ma_bars, 0)])
+    print(rs, mars)
     return rs, mars
 
 def calculate_vfi(bars, period, smooth, coef, vol_coef):
+    if len(bars) < 30:
+        print("Not enough data to calculate VFI, returning default value")
+        # Not enough data to calculate VFI, returning default value
+        return 0
+    else:
+        print("Calculating VFI")
+        
+    
+
     closes = np.array([bar.c for bar in bars])
     highs = np.array([bar.h for bar in bars])
     lows = np.array([bar.l for bar in bars])
@@ -175,24 +192,9 @@ def calculate_vfi(bars, period, smooth, coef, vol_coef):
     mf = typical_price - closes[-2]
     vcp = vc if mf > cutoff else (-vc if mf < -cutoff else 0)
     vfi = vcp / vave  # Simplified for the latest value only
+    print(vfi)
     return vfi
 
-def determine_signal(api, symbol, index_symbol, rs_bars, smoothing_constant, rs_ma_bars, vfi_period, vfi_smooth, vfi_coef, vfi_vol_coef, vfi_crit):
-    # Fetch real-time data for ETF and Index
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=lookback_window)
-    etf_bars = api.get_barset(symbol, 'day', start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d')).df[symbol]
-    index_bars = api.get_barset(index_symbol, 'day', start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d')).df[index_symbol]
-
-    # Calculate RSMK and VFI
-    rs, mars = calculate_rsmk(etf_bars, index_bars, rs_bars, smoothing_constant, rs_ma_bars)
-    vfi = calculate_vfi(etf_bars, vfi_period, vfi_smooth, vfi_coef, vfi_vol_coef)
-
-    # Decide to buy if RSMK and VFI are greater than their respective thresholds
-    if rs > mars and vfi > vfi_crit:
-        return 'buy'
-    else:
-        return 'hold'
 
 # Define your trading logic here
 # Define your trading logic
@@ -205,42 +207,40 @@ def trade_logic(api):
     symbols = ['VUG', 'VTV']
     index_symbol = 'SPY'
 
-    # Fetch recent data for VUG, VTV, and SPY
-    end_date = datetime.now().date()  # Get current date without time
-    start_date = end_date - timedelta(days=lookback_window)
-
-    # Ensure the dates are formatted correctly
-    start_date_str = start_date.strftime('%Y-%m-%d')
-    end_date_str = end_date.strftime('%Y-%m-%d')
-
     # Fetch historical data using get_bars
     
-    vug_bars = get_last30Days_bars(api, 'VUG')
-    vtv_bars = get_last30Days_bars(api, 'VTV')
-    spy_bars = get_last30Days_bars(api, 'SPY')
-    
+    vug_bars = get_historical_bars(api, 'VUG', lookback_days=lookback_window)
+    vtv_bars = get_historical_bars(api, 'VTV', lookback_days=lookback_window)
+    spy_bars = get_historical_bars(api, 'SPY', lookback_days=lookback_window)
+
     print(vug_bars)
     print(vtv_bars)
     print(spy_bars)    
 
     # Calculate the RSMK and VFI signals
     signals = {}
-    for symbol in symbols:
-        etf_bars = barset[symbol]
-        index_bars = barset[index_symbol]
-        rsmk, mars = calculate_rsmk(etf_bars, index_bars, rs_bars, smoothing_constant, rs_ma_bars)
+    for symbol, etf_bars in zip(symbols, [vug_bars, vtv_bars]):
+        # Calculate RSMK and VFI for each ETF
+        rsmk, mars = calculate_rsmk(etf_bars, spy_bars, rs_bars, smoothing_constant, rs_ma_bars)
         vfi = calculate_vfi(etf_bars, vfi_period, vfi_smooth, vfi_coef, vfi_vol_coef)
-        signal = determine_signal(rsmk, mars, vfi, vfi_crit)
+        if rsmk > mars and vfi > vfi_crit:
+            signal = 'buy' 
+        elif rsmk < mars or vfi < vfi_crit:
+            signal = 'sell' 
+        else:
+            signal = 'hold'
+        print(f"Signal for {symbol}: {signal}")
         signals[symbol] = signal
-    
+        
+
     # Get a list of current positions
     positions = api.list_positions()
     positions_dict = {position.symbol: position for position in positions}
 
     for symbol in signals:
-        current_price = barset[symbol][-1].c  # Current price is the close of the last bar
+        current_price = [bar.c for bar in (vug_bars if symbol == 'VUG' else vtv_bars)][-1]  # Current price is the close of the last bar
         signal = signals[symbol]
-        
+
         # Execute trades based on the signal
         if signal == 'buy' and cash_available >= current_price:
             # Buy if the signal is 'buy' and there's enough cash
