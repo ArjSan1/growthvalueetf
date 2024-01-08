@@ -114,6 +114,9 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import numpy as np
+import datetime as dt
+import pytz
+
 
 load_dotenv()  # This loads the .env file at the root of the project
 
@@ -135,6 +138,16 @@ vfi_coef = 0.2
 vfi_vol_coef = 2.5
 lookback_window = 30
 # Define your signal processing functions here (calculate_rsmk, calculate_vfi, determine_signal)
+
+def get_last30Days_bars(api, ticker):
+    timeNow = dt.datetime.now(pytz.timezone('US/Central'))
+    twoDaysAgo = timeNow - dt.timedelta(days=lookback_window)
+
+    bars = api.get_bars(ticker, tradeapi.TimeFrame.Day,
+                        start=twoDaysAgo.isoformat(),
+                        end=None,
+                        limit=2)
+    return bars
 
 # ... (Insert the functions calculate_rsmk, calculate_vfi, and determine_signal here)
 def calculate_rsmk(etf_bars, index_bars, rs_bars, smoothing_constant, rs_ma_bars):
@@ -182,20 +195,34 @@ def determine_signal(api, symbol, index_symbol, rs_bars, smoothing_constant, rs_
         return 'hold'
 
 # Define your trading logic here
+# Define your trading logic
 def trade_logic(api):
     # Fetch current account information
     account = api.get_account()
     cash_available = float(account.cash)
-    
+
     # Define the symbols
     symbols = ['VUG', 'VTV']
-    index_symbol = 'SPY'  # Define the index symbol for comparison
+    index_symbol = 'SPY'
 
     # Fetch recent data for VUG, VTV, and SPY
-    end_date = datetime.now()
+    end_date = datetime.now().date()  # Get current date without time
     start_date = end_date - timedelta(days=lookback_window)
-    barset = api.get_barset(symbols + [index_symbol], 'day', start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
+
+    # Ensure the dates are formatted correctly
+    start_date_str = start_date.strftime('%Y-%m-%d')
+    end_date_str = end_date.strftime('%Y-%m-%d')
+
+    # Fetch historical data using get_bars
     
+    vug_bars = get_last30Days_bars(api, 'VUG')
+    vtv_bars = get_last30Days_bars(api, 'VTV')
+    spy_bars = get_last30Days_bars(api, 'SPY')
+    
+    print(vug_bars)
+    print(vtv_bars)
+    print(spy_bars)    
+
     # Calculate the RSMK and VFI signals
     signals = {}
     for symbol in symbols:
