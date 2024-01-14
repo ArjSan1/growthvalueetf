@@ -1,3 +1,4 @@
+import streamlit as st
 import alpaca_trade_api as tradeapi
 import os
 from dotenv import load_dotenv
@@ -7,11 +8,9 @@ import datetime as dt
 import pytz
 
 
-load_dotenv()  # This loads the .env file at the root of the project
-
-APCA_API_KEY_ID = os.getenv('APCA_API_KEY_ID')
-APCA_API_SECRET_KEY = os.getenv('APCA_API_SECRET_KEY')
-APCA_API_BASE_URL = os.getenv('APCA_API_BASE_URL') or 'https://paper-api.alpaca.markets'
+APCA_API_KEY_ID = st.secrets["APCA_API_KEY_ID"]
+APCA_API_SECRET_KEY = st.secrets["APCA_API_SECRET_KEY"]
+APCA_API_BASE_URL = st.secrets.get("APCA_API_BASE_URL", 'https://paper-api.alpaca.markets')
 
 api = tradeapi.REST(APCA_API_KEY_ID, APCA_API_SECRET_KEY, base_url=APCA_API_BASE_URL)
 
