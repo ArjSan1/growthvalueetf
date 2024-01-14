@@ -128,10 +128,12 @@ def is_bear_market(index_bars, lookback_period=30, threshold=0.90):
 # Define your trading logic here
 # Define your trading logic
 def trade_logic(api):
+    
     # Fetch current account information
     account = api.get_account()
     cash_available = float(account.cash)
-
+    #print(f"Current cash available: ${cash_available:.2f}")
+    returnString = f"[Current cash available: ${cash_available:.2f}]" 
     # Define the symbols
     symbols = ['VUG', 'VTV']
     index_symbol = 'SPY'
@@ -158,7 +160,8 @@ def trade_logic(api):
             signal = 'sell' 
         else:
             signal = 'hold'
-        print(f"Signal for {symbol}: {signal}")
+        #print(f"Signal for {symbol}: {signal}")
+        returnString = returnString + f"\n[Signal for {symbol}: {signal}]"
         signals[symbol] = signal
         
 
@@ -167,11 +170,18 @@ def trade_logic(api):
     positions_dict = {position.symbol: position for position in positions}
 
     if is_bear_market(spy_bars):
-        print("Bear market conditions detected, not executing trades.")
-        return
+        #print("Bear market conditions detected, not executing trades.")
+        returnString = returnString + "\n[Bear market conditions detected, not executing trades.]"
+        return returnString
     if signals['VUG'] == 'sell' and signals['VTV'] == 'sell':
         # Fetch current price of SPY
-        spy_current_price = api.get_last_trade('SPY').price
+        try:
+            spy_current_price = api.get_latest_bar('SPY').c 
+            #print(spy_current_price)
+        except Exception as e:
+           # print(f"Error fetching SPY data: {e}")
+            returnString = returnString + f"\n[Error fetching SPY data: {e}]"
+            return returnString
         # Check if sufficient cash is available to buy SPY
         if cash_available >= spy_current_price:
             api.submit_order(
@@ -181,9 +191,11 @@ def trade_logic(api):
                 type='market',
                 time_in_force='gtc'
             )
-            print(f"Submitted order to buy SPY at {spy_current_price}")
+            #print(f"Submitted order to buy SPY at {spy_current_price} as both VUG and VTV should be sold, and no position is currently held with either VUG or VTV")
+            returnString = returnString + f"\n[Submitted order to buy SPY at {spy_current_price} as both VUG and VTV should be sold, and no position is currently held with either VUG or VTV]"
         else:
-            print("Insufficient cash to buy SPY")
+          # print("Insufficient cash to buy SPY")
+            returnString = returnString + "\n[Insufficient cash to buy SPY]"
         for symbol in signals:
             current_price = [bar.c for bar in (vug_bars if symbol == 'VUG' else vtv_bars)][-1]  # Current price is the close of the last bar
             signal = signals[symbol]
@@ -200,9 +212,11 @@ def trade_logic(api):
                     type='market',
                     time_in_force='gtc'
                 )
-                print(f"Submitted order to buy {symbol} at {current_price}")
+               # print(f"Submitted order to buy {symbol} at {current_price} as signal is {signal}")
+                returnString = returnString + f"\n[Submitted order to buy {symbol} at {current_price} as signal is {signal}]"
             elif signal == 'buy' and cash_available < current_price:
-                print(f"Not enough cash to buy {symbol} at {current_price}")
+               # print(f"Not enough cash to buy {symbol} at {current_price}")
+                returnString = returnString + f"\n[Not enough cash to buy {symbol} at {current_price}]"
 
             if signal == 'sell' and symbol in positions_dict:
                 # Sell if the signal is 'sell' and you own the ETF
@@ -214,14 +228,12 @@ def trade_logic(api):
                     type='market',
                     time_in_force='gtc'
                 )
-                print(f"Submitted order to sell {position_qty} of {symbol} at {current_price}")
-            else:
-                print(f"Signal is {signal}, nothing to do for {symbol} because no position is held, instead buy SPY")
-                
+              #  print(f"Submitted order to sell {position_qty} of {symbol} at {current_price} as signal is {signal}")
+                returnString = returnString + f"\n[Submitted order to sell {position_qty} of {symbol} at {current_price} as signal is {signal}]"
+    return returnString            
+           
         
         
 
-# Run the trading logic
-trade_logic(api)
 
 
