@@ -185,39 +185,39 @@ def trade_logic(api):
         else:
             print("Insufficient cash to buy SPY")
         for symbol in signals:
-        current_price = [bar.c for bar in (vug_bars if symbol == 'VUG' else vtv_bars)][-1]  # Current price is the close of the last bar
-        signal = signals[symbol]
-        
-        
-
-        # Execute trades based on the signal
-        if signal == 'buy' and cash_available >= current_price:
-            # Buy if the signal is 'buy' and there's enough cash
-            api.submit_order(
-                symbol=symbol,
-                qty=1,  # Replace with your desired quantity
-                side='buy',
-                type='market',
-                time_in_force='gtc'
-            )
-            print(f"Submitted order to buy {symbol} at {current_price}")
-        elif signal == 'buy' and cash_available < current_price:
-            print(f"Not enough cash to buy {symbol} at {current_price}")
-
-        if signal == 'sell' and symbol in positions_dict:
-            # Sell if the signal is 'sell' and you own the ETF
-            position_qty = int(positions_dict[symbol].qty)
-            api.submit_order(
-                symbol=symbol,
-                qty=position_qty,
-                side='sell',
-                type='market',
-                time_in_force='gtc'
-            )
-            print(f"Submitted order to sell {position_qty} of {symbol} at {current_price}")
-        else:
-            print(f"Signal is {signal}, nothing to do for {symbol} because no position is held, instead buy SPY")
+            current_price = [bar.c for bar in (vug_bars if symbol == 'VUG' else vtv_bars)][-1]  # Current price is the close of the last bar
+            signal = signals[symbol]
             
+            
+
+            # Execute trades based on the signal
+            if signal == 'buy' and cash_available >= current_price:
+                # Buy if the signal is 'buy' and there's enough cash
+                api.submit_order(
+                    symbol=symbol,
+                    qty=1,  # Replace with your desired quantity
+                    side='buy',
+                    type='market',
+                    time_in_force='gtc'
+                )
+                print(f"Submitted order to buy {symbol} at {current_price}")
+            elif signal == 'buy' and cash_available < current_price:
+                print(f"Not enough cash to buy {symbol} at {current_price}")
+
+            if signal == 'sell' and symbol in positions_dict:
+                # Sell if the signal is 'sell' and you own the ETF
+                position_qty = int(positions_dict[symbol].qty)
+                api.submit_order(
+                    symbol=symbol,
+                    qty=position_qty,
+                    side='sell',
+                    type='market',
+                    time_in_force='gtc'
+                )
+                print(f"Submitted order to sell {position_qty} of {symbol} at {current_price}")
+            else:
+                print(f"Signal is {signal}, nothing to do for {symbol} because no position is held, instead buy SPY")
+                
         
         
 
