@@ -181,20 +181,6 @@ def trade_logic(api):
            # print(f"Error fetching SPY data: {e}")
             returnString = returnString + f"\n[Error fetching SPY data: {e}]"
             return returnString
-        # Check if sufficient cash is available to buy SPY
-        if cash_available >= spy_current_price:
-            api.submit_order(
-                symbol='SPY',
-                qty=1,  # or calculate the appropriate quantity based on available cash
-                side='buy',
-                type='market',
-                time_in_force='gtc'
-            )
-            #print(f"Submitted order to buy SPY at {spy_current_price} as both VUG and VTV should be sold, and no position is currently held with either VUG or VTV")
-            returnString = returnString + f"\n[Submitted order to buy SPY at {spy_current_price} as both VUG and VTV should be sold, and no position is currently held with either VUG or VTV]"
-        else:
-          # print("Insufficient cash to buy SPY")
-            returnString = returnString + "\n[Insufficient cash to buy SPY]"
         for symbol in signals:
             current_price = [bar.c for bar in (vug_bars if symbol == 'VUG' else vtv_bars)][-1]  # Current price is the close of the last bar
             signal = signals[symbol]
