@@ -172,16 +172,7 @@ def trade_logic(api):
         #print("Bear market conditions detected, not executing trades.")
         returnString = returnString + "\n[Bear market conditions detected, not executing trades.]"
         return returnString
-    if signals['VUG'] == 'sell' and signals['VTV'] == 'sell':
-        # Fetch current price of SPY
-        try:
-            spy_current_price = api.get_latest_bar('SPY').c 
-            #print(spy_current_price)
-        except Exception as e:
-           # print(f"Error fetching SPY data: {e}")
-            returnString = returnString + f"\n[Error fetching SPY data: {e}]"
-            return returnString
-        for symbol in signals:
+    for symbol in signals:
             current_price = [bar.c for bar in (vug_bars if symbol == 'VUG' else vtv_bars)][-1]  # Current price is the close of the last bar
             signal = signals[symbol]
             
