@@ -206,6 +206,8 @@ def trade_logic(api):
                 )
               #  print(f"Submitted order to sell {position_qty} of {symbol} at {current_price} as signal is {signal}")
                 returnString = returnString + f"\n[Submitted order to sell {position_qty} of {symbol} at {current_price} as signal is {signal}]"
+            elif signal == 'sell' and symbol not in positions_dict:
+                returnString = returnString + f"\n[No {symbol} position to sell]"
     return returnString            
            
         
